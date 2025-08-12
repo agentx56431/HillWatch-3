@@ -87,6 +87,8 @@ class HillWatchApp(tk.Tk):
         self.db = {}
         self.filtered_items = []   # list[(bill_id, record)]
         self._search_after_id = None
+        self.active_filters = None  # will hold dict from dialog
+
 
         self.load_data()
         self.apply_search(initial=True)
@@ -101,8 +103,18 @@ class HillWatchApp(tk.Tk):
 
     # ---- Search / Filters ----
     def on_filters_clicked(self):
-        # Phase 4 will implement a real dialog
-        messagebox.showinfo("Filters", "Filters dialog will be added in the next phase.")
+        # Open UI dialog (Phase 4) — returns dict or None
+        result = hw_filters.open_filters_dialog(self, self.db, current_filters=self.active_filters)
+        if result is None:
+            return  # user canceled
+        if result and not any(result.values()):
+            # All empty? treat as cleared
+            self.active_filters = None
+            messagebox.showinfo("Filters", "Filters cleared (logic applies in next phase).")
+        else:
+            self.active_filters = result
+            messagebox.showinfo("Filters", "Filters saved (logic applies in next phase).")
+        # NOTE: Actual filtering will be implemented in Phase 5.
 
     def on_search_key(self, _event=None):
         # Debounce search to avoid lag while typing
@@ -119,8 +131,8 @@ class HillWatchApp(tk.Tk):
         self.after(50, self.update_count)
 
     def clear_search_and_filters(self):
-        # For now, only search is implemented (filters come in Phase 4/5)
         self.search_var.set("")
+        self.active_filters = None
         self.apply_search()
 
     def update_count(self):
