@@ -8,6 +8,8 @@ from pathlib import Path
 from desktop_gui.data_access import load_db
 from desktop_gui.table_view import BillsTable
 from desktop_gui import filters as hw_filters
+from desktop_gui.filters import filter_and_sort_items
+
 
 APP_TITLE = "HillWatch v3"
 SEARCH_DEBOUNCE_MS = 300
@@ -70,8 +72,13 @@ class HillWatchApp(tk.Tk):
         self.filters_btn.pack(side="left", padx=(8, 0))
 
         # Table
-        self.table = BillsTable(feed, on_select_row=self.on_select_row)
+        self.table = BillsTable(
+            feed,
+            on_select_row=self.on_select_row,
+            on_render_change=self.on_table_render_change,  # <-- new
+        )
         self.table.pack(fill="both", expand=True, padx=12, pady=(6, 12))
+
 
         # --- Right pane placeholder ---
         right_wrap = ttk.Frame(self.right, padding=(12, 12))
@@ -103,18 +110,16 @@ class HillWatchApp(tk.Tk):
 
     # ---- Search / Filters ----
     def on_filters_clicked(self):
-        # Open UI dialog (Phase 4) — returns dict or None
+        # Open dialog with current filters; apply immediately on return
         result = hw_filters.open_filters_dialog(self, self.db, current_filters=self.active_filters)
         if result is None:
             return  # user canceled
-        if result and not any(result.values()):
-            # All empty? treat as cleared
-            self.active_filters = None
-            messagebox.showinfo("Filters", "Filters cleared (logic applies in next phase).")
-        else:
-            self.active_filters = result
-            messagebox.showinfo("Filters", "Filters saved (logic applies in next phase).")
-        # NOTE: Actual filtering will be implemented in Phase 5.
+
+        # Always keep the result so sort_field/sort_dir are honored,
+        # even if no committees/sponsors/etc. were selected.
+        self.active_filters = result
+        self.apply_search()
+
 
     def on_search_key(self, _event=None):
         # Debounce search to avoid lag while typing
@@ -124,10 +129,9 @@ class HillWatchApp(tk.Tk):
 
     def apply_search(self, initial: bool=False):
         query = (self.search_var.get() or "").strip()
-        self.filtered_items = hw_filters.search_items(self.db, query)
-        # Set rows -> table will sort and render first batch
-        self.table.set_rows(self.filtered_items)
-        # Update count after table renders a batch
+        items, sort_field, sort_dir = filter_and_sort_items(self.db, query, self.active_filters)
+        self.filtered_items = items
+        self.table.set_rows(self.filtered_items, sort_field=sort_field, sort_dir=sort_dir)
         self.after(50, self.update_count)
 
     def clear_search_and_filters(self):
@@ -139,6 +143,10 @@ class HillWatchApp(tk.Tk):
         total = len(self.filtered_items)
         shown = self.table.rendered
         self.count_var.set(f"Showing {shown} of {total}")
+
+    def on_table_render_change(self, rendered: int, total: int):
+        """Called by the table after initial render and each 'Load more'."""
+        self.count_var.set(f"Showing {rendered} of {total}")
 
     # ---- Events ----
     def on_reload_clicked(self):
