@@ -1,285 +1,154 @@
-# HillWatch 2 — Local Legislation Store
+HillWatch 3
+HillWatch 3 is a lightweight Python-based tool for fetching, processing, and storing U.S. congressional legislation data from the Congress.gov API.
+It maintains a local JSON database of all bills in the 119th Congress, supports custom data fields, and is designed for easy future integration with GUIs or data dashboards.
 
-HillWatch 2 is a local Python toolchain for storing, monitoring, and categorizing U.S. legislation data from Congress.gov. It keeps a JSON database you can update **incrementally** and enrich in **phases**. Your own fields (watchlists, notes, etc.) live in a separate section and are **never overwritten** by API refreshes.
+📂 Project Structure
+plaintext
+Copy
+Edit
+HillWatch-3/
+│
+├── .gitignore                # Files/folders ignored by Git
+├── README.md                 # Project documentation (you are here)
+├── requirements.txt          # Python dependencies
+│
+├── data/                      # Local data storage
+│   ├── bills_119.json         # Main JSON database of all 119th Congress bills
+│   ├── bills_119.backup.json  # Backup copy of the database
+│   └── debug/                 # Temporary debug JSON dumps (ignored in Git)
+│
+├── add_customdata_structure.py # Script to add CEI-specific tracking fields to the bill database
+├── bill_utils.py               # Helper functions for bill data processing
+├── config.py                   # Configuration (API keys, constants, etc.)
+├── raw_api_probe.py            # Simple probe script to test Congress.gov API connections
+├── stats.py                    # Summarizes stored bills and custom tracking stats
+└── updater.py                  # Main script for pulling new/updated bill data from Congress.gov API
+📊 Data Dictionary
+The main database (data/bills_119.json) is a list of bill objects.
+Below is the definition of each key:
 
----
+Field Name	Type	Description
+billId	string	Unique internal ID for the bill (e.g., S_2682)
+congress	integer	Congress number (e.g., 119)
+billType	string	Bill type abbreviation (e.g., S, HR, HJRES)
+billNumber	integer	Official bill number
+title	string	Official title of the bill
+originChamber	string	Chamber where the bill originated (Senate or House)
+introducedDate	string	Date bill was introduced (YYYY-MM-DD)
+sponsorFullName	string	Full name of the bill's sponsor
+sponsorParty	string	Party affiliation of sponsor
+sponsorState	string	State abbreviation of sponsor
+sponsorDistrict	string/null	Sponsor's district (House only)
+currentCommitteeName	string/null	Current assigned committee
+currentSubcommitteeName	string/null	Current assigned subcommittee
+latestActionText	string	Summary of the latest action
+latestActionDate	string	Date of latest action
+updateDate	string	Last time this bill was updated in the local database
+updateDateIncludingText	string	Same as updateDate, but also tracks text changes
+sourceUrl	string	Source URL of API data
+congressGovUrl	string	Direct Congress.gov bill page
+contentHash	string	Hash of the content to detect changes
+Custom Tracking Fields		Added via add_customdata_structure.py for CEI purposes
+Review	boolean	Mark for review
+WatchList	boolean	Flag for watch list
+CeiExpert	string	Assigned CEI expert
+StatementRequested	boolean	Whether a statement was requested
+StatementRequestedDate	string	Date statement was requested
+CEIExpertAcceptOrReject	string	Expert’s decision
+Review_Done	boolean	Whether review was completed
+CeiExpertOptions	list	Suggested CEI experts
+Outreach	boolean	Whether outreach has been done
+... (more tracking fields as needed)		
 
-## Folder contents (what each file does)
+⚙️ Installation
+Clone the repository
 
-* `config.py` — Central settings (paths, bill types, API base). Loads `CONGRESS_API_KEY` from `.env`.
-* `bill_utils.py` — Helpers for:
+bash
+Copy
+Edit
+git clone https://github.com/agentx56431/HillWatch-3.git
+cd HillWatch-3
+Create & activate virtual environment
 
-  * Loading/saving the JSON DB *atomically*
-  * Building Congress.gov URLs
-  * Preserving your `customData` on updates
-  * Computing a content hash for change detection
-* `updater.py` — **Main engine**, runs in **three phases**:
+bash
+Copy
+Edit
+python -m venv .venv
+source .venv/Scripts/activate  # Git Bash (Windows)
+# or
+.venv\Scripts\activate         # CMD/PowerShell (Windows)
+Install dependencies
 
-  1. **list** → general bill info (title, latest action, etc.)
-  2. **detail** → *introduced date* + *sponsor*
-  3. **committees** → current committee/subcommittee (if any)
-* `stats.py` — Prints progress stats (totals & by bill type) and last-updated info.
-* `raw_api_probe.py` — Quick debugging probe to print/save raw JSON from Congress.gov for a specific bill.
-* `data/` — Local database & debug outputs:
+bash
+Copy
+Edit
+pip install -r requirements.txt
+Set up .env file
 
-  * `data/bills_119.json` — the main JSON database (created on first run)
-  * `data/debug/` — optional raw responses if you use the probe script
-* `.env` — your API key (example):
+ini
+Copy
+Edit
+CONGRESS_API_KEY=your_api_key_here
+🚀 Core Commands
+Update database with latest Congress.gov data
+bash
+Copy
+Edit
+python updater.py
+Fetches new bills and updates existing bills.
 
-  ```
-  CONGRESS_API_KEY=YOUR_KEY_HERE
-  ```
-* `.venv/` — your Python virtual environment (local, no admin rights needed)
-* `__pycache__/` — Python bytecode cache (auto-generated; safe to delete)
+Maintains data/bills_119.json with incremental changes.
 
----
+Add custom CEI tracking fields
+bash
+Copy
+Edit
+python add_customdata_structure.py
+Adds internal tracking fields to all bills (if missing).
 
-## Prerequisites
+Ensures database schema consistency.
 
-* Python 3.10+ recommended
-* No admin rights needed
-
-Activate the venv (Git Bash on Windows):
-
-```bash
-cd "C:/Users/francisco.ferrisi/Desktop/FF - GA Local Files/Coding/HillWatch 2"
-source .venv/Scripts/activate
-```
-
----
-
-## Quickstart
-
-1. **Add your API key** to `.env`:
-
-```
-CONGRESS_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-2. **Phase 1 — build the index (fast):**
-
-```bash
-python updater.py --phase list --qps 1.2
-```
-
-3. **Phase 2 — enrich sponsor + introduced date:**
-
-* Small test:
-
-```bash
-python updater.py --phase detail --types s --limit 200 --workers 6 --qps 1.2
-```
-
-* Full pass:
-
-```bash
-python updater.py --phase detail --workers 6 --qps 1.2
-```
-
-4. **Phase 3 — enrich committees:**
-
-* Small test:
-
-```bash
-python updater.py --phase committees --types s --limit 200 --workers 6 --qps 1.2
-```
-
-* Full pass:
-
-```bash
-python updater.py --phase committees --workers 6 --qps 1.2
-```
-
-5. **Check status:**
-
-```bash
+View database statistics
+bash
+Copy
+Edit
 python stats.py
-```
+Outputs:
 
----
+Total bills stored
 
-## How the JSON is structured
+Number of bills per chamber
 
-Each bill is keyed like `S_2682` and has two sections:
+Breakdown by latest action
 
-```json
-{
-  "S_2682": {
-    "congressGovData": {
-      "billId": "S_2682",
-      "congress": 119,
-      "billType": "S",
-      "billNumber": "2682",
-      "title": "...",
-      "originChamber": "Senate",
-      "introducedDate": "2025-08-02",
-      "sponsorFullName": "Sen. Example [D-XY]",
-      "sponsorParty": "D",
-      "sponsorState": "XY",
-      "sponsorDistrict": null,
-      "currentCommitteeName": "Judiciary Committee",
-      "currentSubcommitteeName": null,
-      "latestActionText": "...",
-      "latestActionDate": "2025-08-08",
-      "updateDate": "2025-08-09",
-      "updateDateIncludingText": "2025-08-09",
-      "sourceUrl": "https://api.congress.gov/v3/bill/119/s/2682?format=json",
-      "congressGovUrl": "https://www.congress.gov/bill/119th-congress/senate-bill/2682",
-      "contentHash": "…",
-      "committeeLastActionSeen": "2025-08-08"   // set after committees phase
-    },
-    "customData": {
-      "watchlist": false,
-      "ceiExpertNotes": "",
-      "priorityLevel": null
-    }
-  }
-}
-```
+CEI tracking progress
 
-* **`congressGovData`** is updated by scripts (don’t edit by hand).
-* **`customData`** is yours—edit freely; updates won’t overwrite it.
-
----
-
-## Phases (what they do)
-
-### Phase: list
-
-* Pulls general info for all tracked bill types (HR, S, HJRES, SJRES, HCONRES, SCONRES).
-* Initializes new bills and refreshes index fields (title, latest action, etc.).
-* Keeps previously enriched fields as-is.
-
-### Phase: detail
-
-* For bills missing **introducedDate** or **sponsor**, fetches the bill detail endpoint.
-* Runs **in parallel** with `--workers`; respects global rate limit `--qps`.
-
-### Phase: committees
-
-* For bills missing committee or where `latestActionDate` changed since last check, fetches committees and selects the **current** committee/subcommittee (when available).
-* Runs **in parallel** with `--workers` and `--qps`.
-
-**CLI reference:**
-
-```bash
-python updater.py --phase {list|detail|committees} \
-                  [--types s,hr,hjres,sjres,hconres,sconres] \
-                  [--limit N] \
-                  [--workers 6] \
-                  [--qps 1.2]
-```
-
----
-
-## Stats & debugging
-
-**Stats**
-
-```bash
-python stats.py
-```
-
-Prints:
-
-* Total bills
-* Past Phase 1 (listed)
-* Past Phase 2 (detail filled)
-* Past Phase 3 (committees processed or verified)
-* Breakdown by bill type
-* File last-saved time and the latest API update timestamp in the DB
-
-**Raw API probe (if something looks off)**
-
-```bash
+Quick API probe
+bash
+Copy
+Edit
 python raw_api_probe.py
-```
+Tests Congress.gov API key and returns a sample bill record.
 
-Edit the top to choose a bill:
+🛡 .gitignore Rules
+These files/folders are ignored from Git tracking:
 
-```python
-CONGRESS = 119
-BILL_TYPE = "s"
-BILL_NUMBER = "2682"
-```
-
-Saves JSON under `data/debug/` and prints it.
-
----
-
-## Performance tips
-
-* **`--qps`** is a global ceiling across threads. Start conservative (e.g., `1.0–1.4`). If you hit HTTP 429 or 5xx spikes, lower it.
-* **`--workers`** overlaps network latency. 6–8 is a good starting point.
-* You can safely **stop** any phase (Ctrl+C) and re-run later—everything is incremental.
-
----
-
-## Editing your custom fields
-
-Edit only the `customData` block, e.g.:
-
-```json
-"customData": {
-  "watchlist": true,
-  "ceiExpertNotes": "Flag for weekly review",
-  "priorityLevel": "A"
-}
-```
-
-Re-running phases will not change `customData`.
-
----
-
-## Housekeeping & cleanup
-
-Safe to delete any time:
-
-* `__pycache__/` folders
-* `*.pyc` files
-* `data/debug/` (raw probe outputs)
-
-Keep:
-
-* `.venv/` (your local Python environment)
-* `.env` (your API key)
-* `data/bills_119.json` (the database)
-
-Optional `.gitignore` (if you use git):
-
-```
-# Python
+bash
+Copy
+Edit
 __pycache__/
 *.pyc
-
-# Local env & secrets
 .venv/
 .env
-
-# Generated data
 data/debug/
-```
+*.log
+*.tmp
+.vscode/
+Thumbs.db
+.DS_Store
+📌 Notes
+This version of HillWatch is core logic only (no GUI).
 
----
+All future UI/Dashboard integrations should pull from data/bills_119.json.
 
-## Common issues
-
-* **`pip: command not found` in Git Bash** → use `python -m pip install ...`
-* **Venv not activating** → in Git Bash: `source .venv/Scripts/activate`
-* **Null committees** → some bills have no current referral; that’s normal.
-* **Early runs saved nulls** → phases now “re-enrich” missing fields; re-run `detail`/`committees`.
-
----
-
-## Next steps (optional)
-
-* Add a `--since` window to Phase 1 (only list updates since a timestamp).
-* Add tagging & filtering in `customData`.
-* Export CSV/Excel reports from `stats.py`.
-
----
-
-*(Copy this into a file named `README.md` in your HillWatch 2 folder.)*
-
-test
-test2
+The database is append/update safe—you can run updater.py multiple times without data duplication.
