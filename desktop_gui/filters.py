@@ -235,3 +235,100 @@ def open_filters_dialog(parent, db: Dict[str, dict], current_filters: Optional[d
     dlg = FiltersDialog(parent, db, current_filters=current_filters)
     parent.wait_window(dlg)
     return dlg.result
+
+# -------- APPLY FILTERS + SORT (Phase 5) --------
+from datetime import datetime
+from typing import Dict, Tuple, List, Optional
+
+def _parse_date(d: Optional[str]):
+    if not d:
+        return None
+    for fmt in ("%Y-%m-%d",):
+        try:
+            return datetime.strptime(d, fmt).date()
+        except Exception:
+            pass
+    # try ISO timestamps like 2025-08-09T11:03:18Z
+    try:
+        return datetime.fromisoformat(d.replace("Z", "+00:00")).date()
+    except Exception:
+        return None
+
+def _in_date_range(value: Optional[str], dfrom: str, dto: str) -> bool:
+    v = _parse_date(value)
+    if v is None:
+        return False
+    if dfrom:
+        vf = _parse_date(dfrom)
+        if not vf:
+            return False
+        if v < vf:
+            return False
+    if dto:
+        vt = _parse_date(dto)
+        if not vt:
+            return False
+        if v > vt:
+            return False
+    return True
+
+def filter_and_sort_items(
+    db: Dict[str, dict],
+    query: str,
+    filters: Optional[dict],
+) -> Tuple[List[Tuple[str, dict]], str, str]:
+    """
+    Returns (items, sort_field, sort_dir)
+    items: list[(bill_id, rec)] filtered and sorted
+    sort_field: "latest" or "introduced"
+    sort_dir: "asc" or "desc"
+    """
+    # 1) Global search across congressGovData
+    items = search_items(db, query)
+
+    if not filters:
+        # default sort: latest desc, tiebreaker title A→Z (done in table)
+        return items, "latest", "desc"
+
+    comms = set(filters.get("committees") or [])
+    spons = set(filters.get("sponsors") or [])
+    bill_types = set(filters.get("bill_types") or [])
+    origin_chambers = set(filters.get("origin_chambers") or [])
+    date_mode = filters.get("date_mode") or "none"     # none | introduced | latest
+    date_from = filters.get("date_from") or ""
+    date_to = filters.get("date_to") or ""
+    sort_field = filters.get("sort_field") or "latest" # latest | introduced
+    sort_dir = filters.get("sort_dir") or "desc"       # asc | desc
+
+    out = []
+    for bid, rec in items:
+        cg = rec.get("congressGovData", {}) or {}
+
+        # committees
+        if comms:
+            if (cg.get("currentCommitteeName") or "") not in comms:
+                continue
+        # sponsors
+        if spons:
+            if (cg.get("sponsorFullName") or "") not in spons:
+                continue
+        # bill types
+        if bill_types:
+            if (cg.get("billType") or "") not in bill_types:
+                continue
+        # origin chambers
+        if origin_chambers:
+            if (cg.get("originChamber") or "") not in origin_chambers:
+                continue
+        # date range (exclusive mode)
+        if date_mode == "introduced":
+            if not _in_date_range(cg.get("introducedDate"), date_from, date_to):
+                continue
+        elif date_mode == "latest":
+            if not _in_date_range(cg.get("latestActionDate"), date_from, date_to):
+                continue
+
+        out.append((bid, rec))
+
+    # sorting happens in table (we’ll pass the chosen field/dir)
+    return out, sort_field, sort_dir
