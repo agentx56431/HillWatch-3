@@ -1,0 +1,89 @@
+{
+  "bills": [
+    {
+      "congress": 119,
+      "latestAction": {
+        "actionDate": "2025-08-08",
+        "text": "Message on Senate action sent to the House."
+      },
+      "number": "2682",
+      "originChamber": "Senate",
+      "originChamberCode": "S",
+      "title": "Captain Paul W. 'Bud' Bucha VA Medical Center Act of 2025",
+      "type": "S",
+      "updateDate": "2025-08-09",
+      "updateDateIncludingText": "2025-08-09",
+      "url": "https://api.congress.gov/v3/bill/119/s/2682?format=json"
+    },
+    {
+      "congress": 119,
+      "latestAction": {
+        "actionDate": "2025-08-08",
+        "text": "Message on Senate action sent to the House."
+      },
+      "number": "1659",
+      "originChamber": "Senate",
+      "originChamberCode": "S",
+      "title": "Bankruptcy Administration Improvement Act of 2025",
+      "type": "S",
+      "updateDate": "2025-08-09",
+      "updateDateIncludingText": "2025-08-09",
+      "url": "https://api.congress.gov/v3/bill/119/s/1659?format=json"
+    },
+    {
+      "congress": 119,
+      "latestAction": {
+        "actionDate": "2025-08-08",
+        "text": "Message on Senate action sent to the House."
+      },
+      "number": "1155",
+      "originChamber": "Senate",
+      "originChamberCode": "S",
+      "title": "A bill to amend the Trafficking Victims Protection Act of 2000 to make technical corrections.",
+      "type": "S",
+      "updateDate": "2025-08-09",
+      "updateDateIncludingText": "2025-08-09",
+      "url": "https://api.congress.gov/v3/bill/119/s/1155?format=json"
+    },
+    {
+      "congress": 119,
+      "latestAction": {
+        "actionDate": "2025-08-08",
+        "text": "Message on Senate action sent to the House."
+      },
+      "number": "1071",
+      "originChamber": "Senate",
+      "originChamberCode": "S",
+      "title": "A bill to require the Secretary of Veterans Affairs to disinter the remains of Fernando V. Cota from Fort Sam Houston National Cemetery, Texas, and for other purposes.",
+      "type": "S",
+      "updateDate": "2025-08-09",
+      "updateDateIncludingText": "2025-08-09",
+      "url": "https://api.congress.gov/v3/bill/119/s/1071?format=json"
+    },
+    {
+      "congress": 119,
+      "latestAction": {
+        "actionDate": "2025-08-02",
+        "text": "Cloture motion on the motion to proceed to the measure presented in Senate. (CR S5522: 4)"
+      },
+      "number": "2296",
+      "originChamber": "Senate",
+      "originChamberCode": "S",
+      "title": "National Defense Authorization Act for Fiscal Year 2026",
+      "type": "S",
+      "updateDate": "2025-08-06",
+      "updateDateIncludingText": "2025-08-06",
+      "url": "https://api.congress.gov/v3/bill/119/s/2296?format=json"
+    }
+  ],
+  "pagination": {
+    "count": 2665,
+    "next": "https://api.congress.gov/v3/bill/119/s?offset=5&limit=5&format=json"
+  },
+  "request": {
+    "billType": "s",
+    "congress": "119",
+    "contentType": "application/json",
+    "format": "json"
+  }
+}
