@@ -33,3 +33,28 @@ def save_db_atomic(db: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(db, f, indent=2)
     os.replace(tmp, DB_PATH)
+
+def ensure_custom_paths(rec: dict) -> None:
+    """Ensure customData.Review exists with expected keys."""
+    if "customData" not in rec or not isinstance(rec["customData"], dict):
+        rec["customData"] = {}
+    cd = rec["customData"]
+    if "Review" not in cd or not isinstance(cd["Review"], dict):
+        cd["Review"] = {
+            "WatchList": False,
+            "CeiExpert": [],
+            "StatementRequested": False,
+            "StatementRequestedDate": None,
+            "CEIExpertAcceptOrReject": False,
+            "Review_Done": False,
+            "CeiExpertOptions": []
+        }
+
+def set_watchlist_and_save(db: dict, bill_id: str, value: bool) -> None:
+    """Set customData.Review.WatchList and atomically save."""
+    rec = db.get(bill_id)
+    if not rec:
+        raise KeyError(f"Bill not found: {bill_id}")
+    ensure_custom_paths(rec)
+    rec["customData"]["Review"]["WatchList"] = bool(value)
+    save_db_atomic(db)
