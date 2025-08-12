@@ -17,3 +17,4 @@ data/bills_119.json
 .DS_Store
 Thumbs.db
 .vscode/
+data/debug/
