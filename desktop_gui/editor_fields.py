@@ -106,71 +106,81 @@ class DateEntryValidated(ttk.Frame):
             self.entry.focus_set()
             self.entry.selection_range(0, "end")
 
+# --- replace your existing CeiExpertPicker with this ---
+
 class CeiExpertPicker(ttk.Frame):
     """
-    Single-select picker for CeiExpert from CeiExpertOptions.
-    Stores as a one-item list, or [] for none.
+    Single-select picker with a dropdown of experts + a Clear button.
+    Stored format remains a 1-item list (or [] when none).
     """
-    def __init__(self, parent, bill_id: str, get_options, get_current, set_value_callback):
+    def __init__(self, parent, bill_id, get_options, get_current, set_value_callback):
         super().__init__(parent)
         self.bill_id = bill_id
-        self.get_options = get_options
-        self.get_current = get_current
-        self.set_value_callback = set_value_callback
+        self.get_options = get_options       # () -> list[str]
+        self.get_current = get_current       # () -> list[str] (0 or 1 items)
+        self.set_value_callback = set_value_callback  # (bill_id, "Review", "CeiExpert", list[str]) -> bool
 
-        self.var = tk.StringVar(value=self._current_name())
+        # Current value (text)
+        cur_list = self.get_current() or []
+        current = cur_list[0] if (isinstance(cur_list, list) and cur_list) else ""
+        self.var = tk.StringVar(value=current)
 
-        self.btn = ttk.Button(self, text="Select CEI Expert…", command=self._open_popup)
-        self.btn.pack(side="left")
-
-        self.sel_lbl = ttk.Label(self, textvariable=self.var)
-        self.sel_lbl.pack(side="left", padx=(8, 6))
-
-        self.clear_btn = ttk.Button(self, text="Clear", command=self._clear)
-        self.clear_btn.pack(side="left")
-
-    def _current_name(self) -> str:
-        cur = self.get_current() or []
-        return cur[0] if cur else "(none)"
-
-    def _clear(self):
-        ok = self.set_value_callback(self.bill_id, "Review", "CeiExpert", [])
-        if ok:
-            self.var.set("(none)")
-
-    def _open_popup(self):
+        # Dropdown
+        self.combo = ttk.Combobox(self, textvariable=self.var, state="readonly", width=36)
         opts = self.get_options() or []
-        # Prepend a virtual "(none)" entry
-        opts_display = ["(none)"] + list(opts)
+        # Include a top "(none)" entry to visually indicate no selection. Selecting it won't save;
+        # use Clear to actually write [] to the DB.
+        display_opts = ["(none)"] + opts
+        self.combo["values"] = display_opts
 
-        top = tk.Toplevel(self)
-        top.title("Select CEI Expert")
-        top.resizable(False, False)
-        top.transient(self.winfo_toplevel())
-        top.grab_set()
-
-        lb = tk.Listbox(top, selectmode="browse", width=42, height=min(10, max(4, len(opts_display))))
-        for o in opts_display:
-            lb.insert("end", o)
-        lb.pack(padx=12, pady=12)
-
-        def on_choose(_e=None):
-            idx = lb.curselection()
-            if not idx:
-                top.destroy()
-                return
-            val = lb.get(idx[0])
-            if val == "(none)":
-                ok = self.set_value_callback(self.bill_id, "Review", "CeiExpert", [])
-                if ok:
-                    self.var.set("(none)")
+        # Preselect current if present
+        try:
+            if current and current in opts:
+                self.combo.current(display_opts.index(current))
             else:
-                ok = self.set_value_callback(self.bill_id, "Review", "CeiExpert", [val])
-                if ok:
-                    self.var.set(val)
-            top.destroy()
+                self.combo.current(0)  # (none)
+        except Exception:
+            self.combo.current(0)
 
-        lb.bind("<Double-Button-1>", on_choose)
-        ttk.Button(top, text="Choose", command=on_choose).pack(pady=(0, 12))
-        top.bind("<Escape>", lambda e: top.destroy())
-        self.after(10, lambda: top.geometry(f"+{self.winfo_rootx()+80}+{self.winfo_rooty()+40}"))
+        self.combo.pack(side="left")
+
+        # Save on change (except when "(none)" is chosen — use Clear for that)
+        self.combo.bind("<<ComboboxSelected>>", self._on_select)
+
+        # Clear button
+        ttk.Button(self, text="Clear", command=self._on_clear).pack(side="left", padx=(6, 0))
+
+        # Status
+        self.msg = tk.StringVar(value="")
+        ttk.Label(self, textvariable=self.msg, foreground="#2e7d32").pack(side="left", padx=(8, 0))
+
+    def _on_select(self, _evt=None):
+        val = self.var.get().strip()
+        if val == "(none)":
+            # Don't write anything when picking "(none)"; user should click Clear to persist [].
+            self.msg.set("Not saved (use Clear)")
+            self.after(1200, lambda: self.msg.set(""))
+            return
+        ok = False
+        try:
+            ok = bool(self.set_value_callback(self.bill_id, "Review", "CeiExpert", [val]))
+        except Exception:
+            ok = False
+        if ok:
+            self.msg.set("Saved")
+            self.after(1200, lambda: self.msg.set(""))
+
+    def _on_clear(self):
+        ok = False
+        try:
+            ok = bool(self.set_value_callback(self.bill_id, "Review", "CeiExpert", []))
+        except Exception:
+            ok = False
+        if ok:
+            # Reset UI to (none)
+            try:
+                self.combo.current(0)
+            except Exception:
+                pass
+            self.msg.set("Cleared")
+            self.after(1200, lambda: self.msg.set(""))
