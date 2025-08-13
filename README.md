@@ -1,81 +1,132 @@
-# HillWatch 3
+# HillWatch v3
 
-**HillWatch 3** is a lightweight Python tool for **fetching, processing, and storing U.S. congressional legislation** from the official **Congress.gov API**.
-It maintains a local JSON database for the **119th Congress**, supports CEI‑specific tracking fields, and is ready for future GUI or dashboard layers.
+A local toolkit for storing, monitoring, and categorizing U.S. legislation from Congress.gov, with a desktop GUI to browse, search, filter, and manage a custom workflow (WatchList → Rejected → Complete).
+
+> **Local-first**: The JSON database (`data/bills_119.json`) stays on your machine and is ignored by Git by default.
 
 ---
 
-## Project structure
+## Table of Contents
+
+- [Project Structure](#project-structure)
+- [Setup](#setup)
+- [Usage (Terminal Commands)](#usage-terminal-commands)
+- [GUI Overview](#gui-overview)
+- [JSON Database Structure](#json-database-structure)
+- [Data Dictionary](#data-dictionary)
+- [Updater Phases](#updater-phases)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Project Structure
 
 ```
-HillWatch-3/
-├── README.md
-├── requirements.txt                 # requests, python-dotenv
-├── .gitignore
-│
-├── data/
-│   ├── bills_119.json               # MAIN database (keep!)
-│   ├── bills_119.backup.json        # Optional manual backup
-│   └── debug/                       # Scratch outputs (ignored)
-│
-├── config.py                        # Paths, constants (e.g., DB_PATH)
-├── bill_utils.py                    # Helpers (hashing, URL build, merges, etc.)
-├── updater.py                       # Main updater (list → detail → committees)
-├── add_customdata_structure.py      # Ensures customData schema on all bills
-├── stats.py                         # Quick DB stats
-└── raw_api_probe.py                 # Prints raw API JSON for a sample bill
-```
+
+HillWatch 3/
+├─ .venv/                     # Python virtual environment (ignored)
+├─ data/
+│  ├─ bills\_119.json          # Local JSON database (ignored by Git)
+│  └─ debug/                  # Optional raw API probe dumps (ignored)
+├─ desktop\_gui/
+│  ├─ **init**.py
+│  ├─ app.py                  # Main GUI application (left tabs + right details)
+│  ├─ table\_view\.py           # Table widget (Title + Latest Action Date)
+│  ├─ detail\_panel.py         # Right pane (Congress.gov data + Custom editor)
+│  ├─ filter\_dialog.py        # Filters dialog (types, committees, sponsors, dates, sort)
+│  ├─ data\_access.py          # JSON load/save helpers (safe, atomic writes)
+│  ├─ collapsible.py          # Expand/collapse sections
+│  └─ editor\_fields.py        # Reusable form controls (checkbox, text, date, CEI picker)
+├─ bill\_utils.py              # Helpers shared by CLI tools
+├─ config.py                  # Constants (paths, types, threading defaults)
+├─ updater.py                 # CLI updater (phased API fetch + enrichment)
+├─ raw\_api\_probe.py           # Prints raw API JSON for debugging mappings
+├─ stats.py                   # Quick stats for the local JSON
+├─ requirements.txt
+├─ .gitignore
+└─ README.md
+
+````
+
+**Git ignores** the venv, `.env`, logs, tmp files, `.vscode/`, and `data/bills_119.json`.
 
 ---
 
 ## Setup
 
 ```bash
+# from the project root folder
 python -m venv .venv
-source .venv/Scripts/activate     # (Git Bash on Windows)
+# Windows + Git Bash:
+source .venv/Scripts/activate
+
+# install dependencies
 pip install -r requirements.txt
-```
 
-Create `.env`:
+# (Optional) put your Congress.gov API key in .env as:
+# CONGRESS_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+````
 
-```
-CONGRESS_API_KEY=your_api_key_here
-```
+> If you don’t use a `.env`, make sure `config.py` picks up your API key another way.
 
 ---
 
-## Usage
+## Usage (Terminal Commands)
 
-Update/refresh the local database:
-
-```bash
-python updater.py
-```
-
-Initialize/repair custom fields:
+### Run the desktop app
 
 ```bash
-python add_customdata_structure.py
+python -m desktop_gui.app
 ```
 
-See quick stats:
+### Show quick database stats
 
 ```bash
 python stats.py
 ```
 
-Probe the API (lists + detail + committees for a sample):
+Outputs totals by phase and by bill type, plus last modified time.
+
+### Probe raw API responses for one bill (debug)
 
 ```bash
 python raw_api_probe.py
 ```
 
+Dumps “list”, “detail”, and “committees” JSON for a sample bill into `data/debug/` and prints to terminal.
+
 ---
 
-## JSON database structure (shape)
+## GUI Overview
 
-`data/bills_119.json` is a JSON **object** keyed by `billId` (e.g., `"S_2682"`).
-Each value has two top‑level sections: `congressGovData` (API‑driven) and `customData` (your fields).
+**Left side**: Tabs with searchable/sortable tables
+
+* **Bills Feed** — all bills (always 100% of `bills_119.json`)
+* **WatchList** — watchlisted bills *not* Rejected/Complete
+* **Rejected** — `Review.WatchList = true`, `CEIExpertAcceptOrReject = false`, and `Review_Done = true`
+* **Complete** — `Review.WatchList = true`, `CEIExpertAcceptOrReject = true`, and `Final_Tracking_Done = true`
+
+Features:
+
+* **Search** (as you type) across title, sponsor, committee, latest action text, etc.
+* **Filters**: bill type, origin chamber, committees, sponsors, date range (Introduced or Latest Action), sort order.
+* **Load More**: renders +200 in the current tab without reloading.
+
+**Right side**: Details for selected row
+
+* **View Legislation in Browser** (opens `congressGovUrl`)
+* ⭐ **WatchList** toggle
+* **Congress.gov Data** (read-only; open by default)
+* **Custom** (collapsed by default) → Review, Outreach, FinalTracking (editable)
+
+  * CEI Expert single-select with **Clear**
+  * All edits **autosave** instantly and **re-route** the row across WatchList/Rejected/Complete as needed.
+
+---
+
+## JSON Database Structure
+
+Top-level is a mapping of `billId` → bill record. Example (single bill abbreviated):
 
 ```json
 {
@@ -92,7 +143,7 @@ Each value has two top‑level sections: `congressGovData` (API‑driven) and `c
       "sponsorParty": "D",
       "sponsorState": "CT",
       "sponsorDistrict": null,
-      "currentCommitteeName": "Veterans' Affairs Committee",
+      "currentCommitteeName": null,
       "currentSubcommitteeName": null,
       "latestActionText": "Message on Senate action sent to the House.",
       "latestActionDate": "2025-08-08",
@@ -100,24 +151,24 @@ Each value has two top‑level sections: `congressGovData` (API‑driven) and `c
       "updateDateIncludingText": "2025-08-09",
       "sourceUrl": "https://api.congress.gov/v3/bill/119/s/2682?format=json",
       "congressGovUrl": "https://www.congress.gov/bill/119th-congress/senate-bill/2682",
-      "contentHash": "2ae1e5...d665c90",
+      "contentHash": "…",
       "committeeLastActionSeen": "2025-08-08"
     },
     "customData": {
       "Review": {
         "WatchList": false,
         "CeiExpert": [],
-        "StatementRequested": false,
-        "StatementRequestedDate": null,
-        "CEIExpertAcceptOrReject": false,
-        "Review_Done": false,
         "CeiExpertOptions": [
           "Iain Murray", "John Berlau", "Richard Morrison", "Ryan Young",
           "Sean Higgins", "Stone Washington", "Clyde Wayne Crews", "Alex Reinauer",
           "Jessica Melugin", "Jeremy Nighossian", "Ondray Harris", "Devin Watkins",
           "David McFadden", "Ben Lieberman", "Daren Bakst", "Jacob Tomasulo",
           "Marlo Lewis", "Paige Lambermont"
-        ]
+        ],
+        "StatementRequested": false,
+        "StatementRequestedDate": null,
+        "CEIExpertAcceptOrReject": false,
+        "Review_Done": false
       },
       "Outreach": {
         "Worked_Directly_with_Office": false,
@@ -147,116 +198,136 @@ Each value has two top‑level sections: `congressGovData` (API‑driven) and `c
 
 ---
 
-## Data dictionary
+## Data Dictionary
 
-**Endpoints used**
+| Field                   | JSON Path                                 |               Type | Source                         | Notes                                                                      |
+| ----------------------- | ----------------------------------------- | -----------------: | ------------------------------ | -------------------------------------------------------------------------- |
+| billId                  | `congressGovData.billId`                  |             string | Auto (computed)                | `"{billType}_{billNumber}"`                                                |
+| congress                | `congressGovData.congress`                |             number | Congress.gov API (list/detail) | 119                                                                        |
+| billType                | `congressGovData.billType`                |             string | Congress.gov API (list/detail) | HR, S, HJRES, SJRES, HCONRES, SCONRES                                      |
+| billNumber              | `congressGovData.billNumber`              |             string | Congress.gov API (list/detail) | e.g., `"2682"`                                                             |
+| title                   | `congressGovData.title`                   |             string | Congress.gov API (list/detail) |                                                                            |
+| originChamber           | `congressGovData.originChamber`           |             string | Congress.gov API (list/detail) | “House” or “Senate”                                                        |
+| introducedDate          | `congressGovData.introducedDate`          | string(YYYY‑MM‑DD) | Congress.gov API (detail)      |                                                                            |
+| sponsorFullName         | `congressGovData.sponsorFullName`         |             string | Congress.gov API (detail)      |                                                                            |
+| sponsorParty            | `congressGovData.sponsorParty`            |             string | Congress.gov API (detail)      | D/R/I                                                                      |
+| sponsorState            | `congressGovData.sponsorState`            |             string | Congress.gov API (detail)      |                                                                            |
+| sponsorDistrict         | `congressGovData.sponsorDistrict`         |       string\|null | Congress.gov API (detail)      | null for Senators                                                          |
+| currentCommitteeName    | `congressGovData.currentCommitteeName`    |       string\|null | Congress.gov API (committees)  | The single “current” committee (heuristic)                                 |
+| currentSubcommitteeName | `congressGovData.currentSubcommitteeName` |       string\|null | Congress.gov API (committees)  |                                                                            |
+| latestActionText        | `congressGovData.latestActionText`        |             string | Congress.gov API (list/detail) |                                                                            |
+| latestActionDate        | `congressGovData.latestActionDate`        | string(YYYY‑MM‑DD) | Congress.gov API (list/detail) |                                                                            |
+| updateDate              | `congressGovData.updateDate`              |             string | Congress.gov API               |                                                                            |
+| updateDateIncludingText | `congressGovData.updateDateIncludingText` |             string | Congress.gov API               |                                                                            |
+| sourceUrl               | `congressGovData.sourceUrl`               |             string | Auto (from API anchor)         | Canonical API URL for the bill                                             |
+| congressGovUrl          | `congressGovData.congressGovUrl`          |             string | Auto (computed)                | `https://www.congress.gov/bill/{congress}th-congress/{type-name}/{number}` |
+| contentHash             | `congressGovData.contentHash`             |             string | Auto (computed)                | Hash for change detection                                                  |
+| committeeLastActionSeen | `congressGovData.committeeLastActionSeen` | string(YYYY‑MM‑DD) | Auto (computed)                | Used by updater to avoid reprocessing                                      |
 
-* **List**: `/v3/bill/{congress}/{billType}?offset=&limit=&format=json` → “API(list)”
-* **Detail**: `/v3/bill/{congress}/{billType}/{number}?format=json` → “API(detail)”
-* **Committees**: `/v3/bill/{congress}/{billType}/{number}/committees?format=json` → “API(committees)”
+**Custom — Review**
 
-**Sources legend**
+| Field                   | JSON Path                                   |                     Type | Source       | Notes                                               |
+| ----------------------- | ------------------------------------------- | -----------------------: | ------------ | --------------------------------------------------- |
+| WatchList               | `customData.Review.WatchList`               |                  boolean | Manual (GUI) | Drives inclusion in WatchList/Rejected/Complete     |
+| CeiExpert               | `customData.Review.CeiExpert`               |           array\<string> | Manual (GUI) | Single-select via GUI; stored as list; can be empty |
+| CeiExpertOptions        | `customData.Review.CeiExpertOptions`        |           array\<string> | Static list  | CEI expert names shown in picker                    |
+| StatementRequested      | `customData.Review.StatementRequested`      |                  boolean | Manual       |                                                     |
+| StatementRequestedDate  | `customData.Review.StatementRequestedDate`  | string(YYYY‑MM‑DD)\|null | Manual       |                                                     |
+| CEIExpertAcceptOrReject | `customData.Review.CEIExpertAcceptOrReject` |                  boolean | Manual       | `True=Accept, False=Reject`                         |
+| Review\_Done            | `customData.Review.Review_Done`             |                  boolean | Manual       | Marks review phase complete                         |
 
-* **API(list)**: basic bill rows from the list endpoint
-* **API(detail)**: fuller, single‑bill endpoint (sponsors, introducedDate, etc.)
-* **API(committees)**: bill committees/subcommittees list
-* **Auto**: derived/calculated locally
-* **Manual**: user‑maintained custom fields
+**Custom — Outreach**
 
-### A) `congressGovData` fields
+| Field                          | JSON Path                                          |                     Type | Source | Notes     |
+| ------------------------------ | -------------------------------------------------- | -----------------------: | ------ | --------- |
+| Worked\_Directly\_with\_Office | `customData.Outreach.Worked_Directly_with_Office`  |                  boolean | Manual |           |
+| Statement\_Complete            | `customData.Outreach.Statement_Complete`           |                  boolean | Manual |           |
+| Statement\_Complete\_Date      | `customData.Outreach.Statement_Complete_Date`      | string(YYYY‑MM‑DD)\|null | Manual |           |
+| Statement\_Emailed\_Directly   | `customData.Outreach.Statement_Emailed_Directly`   |                  boolean | Manual |           |
+| Statement\_Emailed\_Quorum     | `customData.Outreach.Statement_Emailed_Quorum`     |                  boolean | Manual |           |
+| InternalLed\_Coalition\_Letter | `customData.Outreach.InternalLed_Coalition_Letter` |                  boolean | Manual |           |
+| ExternalLed\_Coalition\_Letter | `customData.Outreach.ExternalLed_Coalition_Letter` |                  boolean | Manual |           |
+| Support\_Posted\_Website       | `customData.Outreach.Support_Posted_Website`       |                  boolean | Manual |           |
+| Other\_Support                 | `customData.Outreach.Other_Support`                |                   string | Manual | Free text |
+| Outreach\_Done                 | `customData.Outreach.Outreach_Done`                |                  boolean | Manual |           |
 
-| Key                       | Type                       | Source                  | Notes                                                                                                                 |
-| ------------------------- | -------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `billId`                  | string                     | Auto                    | Internal ID `${billType}_${billNumber}` (e.g., `S_2682`).                                                             |
-| `congress`                | integer                    | API(list) / API(detail) | Congress number (e.g., 119).                                                                                          |
-| `billType`                | string                     | API(list) / API(detail) | One of `HR`, `S`, `HJRES`, `SJRES`, `HCONRES`, `SCONRES`.                                                             |
-| `billNumber`              | string                     | API(list) / API(detail) | Numeric string (“2682”).                                                                                              |
-| `title`                   | string                     | API(list) / API(detail) | Chosen default title from API (typically “title” in list).                                                            |
-| `originChamber`           | string                     | API(list) / API(detail) | “House” or “Senate”.                                                                                                  |
-| `introducedDate`          | string(YYYY‑MM‑DD) or null | **API(detail)**         | `bill.introducedDate`.                                                                                                |
-| `sponsorFullName`         | string or null             | **API(detail)**         | `bill.sponsors[0].fullName` if present.                                                                               |
-| `sponsorParty`            | string or null             | **API(detail)**         | `bill.sponsors[0].party`.                                                                                             |
-| `sponsorState`            | string or null             | **API(detail)**         | `bill.sponsors[0].state`.                                                                                             |
-| `sponsorDistrict`         | string or null             | **API(detail)**         | `bill.sponsors[0].district` if present (House).                                                                       |
-| `currentCommitteeName`    | string or null             | **API(committees)**     | First active/most recent committee (we pick one).                                                                     |
-| `currentSubcommitteeName` | string or null             | **API(committees)**     | First active subcommittee (if any).                                                                                   |
-| `latestActionText`        | string                     | API(list) / API(detail) | `latestAction.text`.                                                                                                  |
-| `latestActionDate`        | string(YYYY‑MM‑DD)         | API(list) / API(detail) | `latestAction.actionDate`.                                                                                            |
-| `updateDate`              | string(YYYY‑MM‑DD)         | API(list)               | When API row last updated (not our local write).                                                                      |
-| `updateDateIncludingText` | string(YYYY‑MM‑DD)         | API(list)               | API’s “including text” update marker.                                                                                 |
-| `sourceUrl`               | string                     | Auto                    | Stored canonical detail URL we hit for this bill.                                                                     |
-| `congressGovUrl`          | string                     | Auto                    | Pretty URL: `https://www.congress.gov/bill/{congress}th-congress/{type-name}/{number}` (e.g., *senate-bill* for `S`). |
-| `contentHash`             | string                     | Auto                    | Hash of selected fields; used to detect content changes and avoid rewriting unchanged bills.                          |
-| `committeeLastActionSeen` | string(YYYY‑MM‑DD) or null | Auto                    | Timestamp we last observed a committee/subcommittee assignment (for incremental updates).                             |
+**Custom — FinalTracking**
 
-### B) `customData` → **Manual** (user‑maintained, with sensible defaults)
-
-#### `Review` (manual; defaults set by `add_customdata_structure.py`)
-
-| Key                       | Type           | Source              | Notes                             |
-| ------------------------- | -------------- | ------------------- | --------------------------------- |
-| `WatchList`               | boolean        | Manual              | Star/flag for internal watchlist. |
-| `CeiExpert`               | array\<string> | Manual              | Selected experts from options.    |
-| `StatementRequested`      | boolean        | Manual              | Whether we requested a statement. |
-| `StatementRequestedDate`  | date or null   | Manual              | `YYYY‑MM‑DD`.                     |
-| `CEIExpertAcceptOrReject` | boolean        | Manual              | `True`=Accept, `False`=Reject.    |
-| `Review_Done`             | boolean        | Manual              | Marks review completion.          |
-| `CeiExpertOptions`        | array\<string> | Manual (pre‑seeded) | Shared list of allowable experts. |
-
-#### `Outreach` (manual)
-
-| Key                            | Type         | Source | Notes                                |
-| ------------------------------ | ------------ | ------ | ------------------------------------ |
-| `Worked_Directly_with_Office`  | boolean      | Manual | Outreach status.                     |
-| `Statement_Complete`           | boolean      | Manual | Whether statement text is finalized. |
-| `Statement_Complete_Date`      | date or null | Manual | `YYYY‑MM‑DD`.                        |
-| `Statement_Emailed_Directly`   | boolean      | Manual | Sent directly to offices.            |
-| `Statement_Emailed_Quorum`     | boolean      | Manual | Sent via Quorum.                     |
-| `InternalLed_Coalition_Letter` | boolean      | Manual | Internal coalition letters.          |
-| `ExternalLed_Coalition_Letter` | boolean      | Manual | External coalition letters.          |
-| `Support_Posted_Website`       | boolean      | Manual | Posted on CEI site.                  |
-| `Other_Support`                | string       | Manual | Free‑text notes.                     |
-| `Outreach_Done`                | boolean      | Manual | Outreach complete.                   |
-
-#### `FinalTracking` (manual)
-
-| Key                            | Type         | Source | Notes                            |
-| ------------------------------ | ------------ | ------ | -------------------------------- |
-| `Press_Release_Mention`        | boolean      | Manual | Was bill mentioned in a release? |
-| `Press Release Mention_Source` | string       | Manual | Source/URL/notes.                |
-| `Any_Public_Mention`           | boolean      | Manual | Any public mention online/press. |
-| `Any_Public_Mention_Source`    | string       | Manual | Source/URL/notes.                |
-| `Notes_or_Other`               | string       | Manual | Free‑text notes.                 |
-| `Public_Mention_Date`          | date or null | Manual | `YYYY‑MM‑DD`.                    |
-| `Final_Tracking_Done`          | boolean      | Manual | Final tracking complete.         |
-
-> **Tab logic (for future GUI):**
->
-> * **WatchList tab**: `Review.WatchList == True` and `Review.Review_Done == False`
-> * **Rejected tab**: `Review.Review_Done == True` and `Review.CEIExpertAcceptOrReject == False`
-> * **Complete tab**: `FinalTracking.Final_Tracking_Done == True`
+| Field                         | JSON Path                                               |                     Type | Source | Notes                                                   |
+| ----------------------------- | ------------------------------------------------------- | -----------------------: | ------ | ------------------------------------------------------- |
+| Press\_Release\_Mention       | `customData.FinalTracking.Press_Release_Mention`        |                  boolean | Manual |                                                         |
+| Press Release Mention\_Source | `customData.FinalTracking.Press Release Mention_Source` |                   string | Manual |                                                         |
+| Any\_Public\_Mention          | `customData.FinalTracking.Any_Public_Mention`           |                  boolean | Manual |                                                         |
+| Any\_Public\_Mention\_Source  | `customData.FinalTracking.Any_Public_Mention_Source`    |                   string | Manual |                                                         |
+| Notes\_or\_Other              | `customData.FinalTracking.Notes_or_Other`               |                   string | Manual |                                                         |
+| Public\_Mention\_Date         | `customData.FinalTracking.Public_Mention_Date`          | string(YYYY‑MM‑DD)\|null | Manual |                                                         |
+| Final\_Tracking\_Done         | `customData.FinalTracking.Final_Tracking_Done`          |                  boolean | Manual | Triggers move to **Complete** when combined with Accept |
 
 ---
 
-## Update strategy (fast & incremental)
+## Updater Phases
 
-* Phase 1: **List** calls per billType, paginated (pulls basic fields & `latestAction` + API `updateDate`s).
-* Phase 2: **Detail** calls for bills that are new/changed since last `contentHash`.
-* Phase 3: **Committees** calls only when missing or `updateDate` moved forward.
-* Writes are **idempotent**: unchanged bills are skipped (via `contentHash`).
+> You already separated API calls by phase for speed and control.
+
+* **Phase: list** — hit `/bill/:congress/:billType` (6 types) to build the generic bill list.
+* **Phase: detail** — per bill, hit `/bill/:congress/:billType/:number` to get `introducedDate`, sponsor fields, etc.
+* **Phase: committees** — per bill, hit `/bill/:congress/:billType/:number/committees` and select the *current* committee/subcommittee.
+
+Examples:
+
+```bash
+# fetch list (first pass)
+python updater.py --phase list --workers 6 --qps 1.5
+
+# enrich with detail (introduced date, sponsor, etc.)
+python updater.py --phase detail --workers 6 --qps 1.2
+
+# committees pass
+python updater.py --phase committees --workers 6 --qps 1.0
+
+# show what would be updated without writing
+python updater.py --dry-run
+```
+
+* **Workers** = concurrent requests
+* **QPS** = requests per second (respect API limits)
+
+The updater **only updates changed bills** using content hashes + timestamps, so you don’t have to reprocess all 7,800+ bills each run.
 
 ---
 
-## Tips & safety
+## Troubleshooting
 
-* Keep `.env` **out of Git** (already in `.gitignore`).
-* Keep `data/bills_119.json` under Git if you want history; otherwise add it to `.gitignore` and keep only a small `sample_bills.json` for sharing.
-* Make a manual backup occasionally:
+* **GUI shows nothing / import error** → Ensure you run in the venv and installed requirements:
+  `source .venv/Scripts/activate && pip install -r requirements.txt`
+
+* **JSON won’t save (Windows)** → If you see `PermissionError: [WinError 5]`:
+
+  * Close any programs holding the file (Explorer preview, editors).
+  * We write atomically (temp file + replace). If antivirus blocks, add an exception for the project folder.
+
+* **Git “NUL” file** → If that ghost file appears:
 
   ```bash
-  cp data/bills_119.json data/bills_119.backup.json
+  git rm --cached -f NUL 2> NUL
+  git commit -m "Remove ghost NUL"
+  git push
   ```
+
+  And add `NUL` to `.gitignore`.
+
+* **Count label after “Load More”** → It updates in the active tab and shows “Showing X of Y”; if it doesn’t, reload the app and report the tab where you saw it.
 
 ---
 
-If you want, I can also generate a small **`sample_bills.json`** (2–3 bills) you can commit publicly while keeping your full DB private.
+## License
+
+Private internal project (no license published).
+
+```
+
+---
+
+Want me to push these changes to your README wording (e.g., add screenshots later), or tweak any sections (like adding a “Build from scratch” checklist)?
+::contentReference[oaicite:0]{index=0}
+```
